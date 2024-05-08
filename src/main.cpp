@@ -1,26 +1,35 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <DallasTemperature.h>
+#include <OneWire.h>
+#include <GravityTDS.h>
+#include <EEPROM.h>
 
 #define PHSensorPin A0  // ph sensor pin
-#define TdsSensorPin A1 // tds sensor pin
+#define TdsSensorPin A5 // tds sensor pin
 #define VREF 5.0        // voltage reference of ADC
+#define ADCRange 1024   // ADC Range of microcontroller
 #define SCOUNT 30       // sum of sample point
 #define Offset 0.00     // deviation compensate
 #define LED 13
 #define samplingInterval 20
-#define samplingInterval2 40U
+#define samplingInterval2 1000
 #define printInterval 800
 #define ArrayLenth 40 // times of collection
+#define ONE_WIRE_BUS 2 // Data wire of DS18B is plugged into port 2 on the Arduino
 
 int analogBuffer[SCOUNT]; // store the analog value in the array, read from ADC
 int analogBufferTemp[SCOUNT];
 int analogBufferIndex = 0, copyIndex = 0;
 int pHArray[ArrayLenth]; // Store the average value of the sensor feedback
 int pHArrayIndex = 0;
-float averageVoltage = 0, tdsValue = 0, temperature = 25;
+float averageVoltage = 0, tdsValue = 0, temperature = 0;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2); // lcd addresses and spec
+OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+DallasTemperature tempSensors(&oneWire); // Pass our oneWire reference to Dallas Temperature.
+GravityTDS tdsSensor;
 
 double avergearray(int *arr, int number)
 {
@@ -73,35 +82,10 @@ double avergearray(int *arr, int number)
           amount += arr[i]; // min<=arr<=max
         }
       } // if
-    }   // for
+    } // for
     avg = (double)amount / (number - 2);
   } // if
   return avg;
-}
-
-int getMedianNum(int bArray[], int iFilterLen)
-{
-  int bTab[iFilterLen];
-  for (byte i = 0; i < iFilterLen; i++)
-    bTab[i] = bArray[i];
-  int i, j, bTemp;
-  for (j = 0; j < iFilterLen - 1; j++)
-  {
-    for (i = 0; i < iFilterLen - j - 1; i++)
-    {
-      if (bTab[i] > bTab[i + 1])
-      {
-        bTemp = bTab[i];
-        bTab[i] = bTab[i + 1];
-        bTab[i + 1] = bTemp;
-      }
-    }
-  }
-  if ((iFilterLen & 1) > 0)
-    bTemp = bTab[(iFilterLen - 1) / 2];
-  else
-    bTemp = (bTab[iFilterLen / 2] + bTab[iFilterLen / 2 - 1]) / 2;
-  return bTemp;
 }
 
 void setup(void)
@@ -111,6 +95,11 @@ void setup(void)
   lcd.init();
   lcd.backlight();
   Serial.begin(9600);
+  tempSensors.begin();
+  tdsSensor.setPin(TdsSensorPin);
+  tdsSensor.setAref(VREF);
+  tdsSensor.setAdcRange(ADCRange);
+  tdsSensor.begin();
   Serial.println("pH meter experiment!"); // Test the serial monitor
 }
 void loop(void)
@@ -124,28 +113,28 @@ void loop(void)
     pHArray[pHArrayIndex++] = analogRead(PHSensorPin);
     if (pHArrayIndex == ArrayLenth)
       pHArrayIndex = 0;
-    voltage = avergearray(pHArray, ArrayLenth) * 5.0 / 1024;
+    voltage = avergearray(pHArray, ArrayLenth) * VREF / 1024;
     pHValue = 3.5 * voltage + Offset;
     samplingTime = millis();
   }
-  if (millis() - samplingTime2 > samplingInterval2) // every 40 milliseconds,read the analog value from the ADC
+
+  if (millis() - samplingTime2 > samplingInterval2)
   {
-    analogBuffer[analogBufferIndex] = analogRead(TdsSensorPin); // read the analog value and store into the buffer
-    analogBufferIndex++;
-    if (analogBufferIndex == SCOUNT)
-      analogBufferIndex = 0;
+    // request tds value from sensor
+    tdsSensor.setTemperature(temperature);
+    tdsSensor.update();
+    tdsValue = tdsSensor.getTdsValue();
+    // request temperature to DS18 Sensor
+    tempSensors.requestTemperatures();
+    temperature = tempSensors.getTempCByIndex(0);
     samplingTime2 = millis();
   }
+  
 
   if (millis() - printTime > printInterval) // Every 800 milliseconds, print a numerical, convert the state of the LED indicator
   {
-    for (copyIndex = 0; copyIndex < SCOUNT; copyIndex++)
-      analogBufferTemp[copyIndex] = analogBuffer[copyIndex];
-    averageVoltage = getMedianNum(analogBufferTemp, SCOUNT) * (float)VREF / 1024.0;                                                                                                  // read the analog value more stable by the median filtering algorithm, and convert to voltage value
-    float compensationCoefficient = 1.0 + 0.02 * (temperature - 25.0);                                                                                                               // temperature compensation formula: fFinalResult(25^C) = fFinalResult(current)/(1.0+0.02*(fTP-25.0));
-    float compensationVolatge = averageVoltage / compensationCoefficient;                                                                                                            // temperature compensation
-    tdsValue = (133.42 * compensationVolatge * compensationVolatge * compensationVolatge - 255.86 * compensationVolatge * compensationVolatge + 857.39 * compensationVolatge) * 0.5; // convert voltage value to tds value
-
+    
+  
     // clear LCD first
     lcd.clear();
 
@@ -174,11 +163,11 @@ void loop(void)
     Serial.print(averageVoltage, 2);
     Serial.print("V   ");
 
-    // display voltage TDS to lcd on row 2
+    // display temperature to lcd on row 2
     lcd.setCursor(0, 1);
-    lcd.print("V:");
+    lcd.print("T:");
     lcd.setCursor(3, 1);
-    lcd.print(averageVoltage);
+    lcd.print(temperature, 1);
 
     // display TDS value to serial
     Serial.print("    TDS Value:");

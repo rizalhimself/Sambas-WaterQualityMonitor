@@ -5,6 +5,7 @@
 #include <OneWire.h>
 #include <GravityTDS.h>
 #include <EEPROM.h>
+#include <ArduinoJson.h>
 
 #define PHSensorPin A0  // ph sensor pin
 #define TdsSensorPin A5 // tds sensor pin
@@ -16,7 +17,7 @@
 #define samplingInterval 20
 #define samplingInterval2 1000
 #define printInterval 800
-#define ArrayLenth 40 // times of collection
+#define ArrayLenth 40  // times of collection
 #define ONE_WIRE_BUS 2 // Data wire of DS18B is plugged into port 2 on the Arduino
 
 int analogBuffer[SCOUNT]; // store the analog value in the array, read from ADC
@@ -26,10 +27,18 @@ int pHArray[ArrayLenth]; // Store the average value of the sensor feedback
 int pHArrayIndex = 0;
 float averageVoltage = 0, tdsValue = 0, temperature = 0;
 
-LiquidCrystal_I2C lcd(0x27, 16, 2); // lcd addresses and spec
-OneWire oneWire(ONE_WIRE_BUS); // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+LiquidCrystal_I2C lcd(0x27, 16, 2);      // lcd addresses and spec
+OneWire oneWire(ONE_WIRE_BUS);           // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 DallasTemperature tempSensors(&oneWire); // Pass our oneWire reference to Dallas Temperature.
 GravityTDS tdsSensor;
+
+void sendDataToSerial1()
+{
+  DynamicJsonDocument doc(1024);
+  doc["tds"] = tdsValue;
+  doc["temp"] = temperature;
+  serializeJson(doc, Serial1);
+}
 
 double avergearray(int *arr, int number)
 {
@@ -90,6 +99,7 @@ double avergearray(int *arr, int number)
 
 void setup(void)
 {
+  Serial1.begin(115200, SERIAL_8N1);
   pinMode(LED, OUTPUT);
   pinMode(TdsSensorPin, INPUT);
   lcd.init();
@@ -129,12 +139,10 @@ void loop(void)
     temperature = tempSensors.getTempCByIndex(0);
     samplingTime2 = millis();
   }
-  
 
   if (millis() - printTime > printInterval) // Every 800 milliseconds, print a numerical, convert the state of the LED indicator
   {
-    
-  
+
     // clear LCD first
     lcd.clear();
 
@@ -185,5 +193,8 @@ void loop(void)
 
     // reset millis
     printTime = millis();
+
+    // sendDataToSerial1
+    sendDataToSerial1();
   }
 }

@@ -8,24 +8,25 @@
 #include <ArduinoJson.h>
 
 #define PHSensorPin A0  // ph sensor pin
-#define TdsSensorPin A5 // tds sensor pin
+#define TdsSensorPin A1 // tds sensor pin
+#define pinBuzzer 5     // buzzer pin
 #define VREF 5.0        // voltage reference of ADC
 #define ADCRange 1024   // ADC Range of microcontroller
 #define SCOUNT 30       // sum of sample point
 #define Offset 0.00     // deviation compensate
-#define LED 13
 #define samplingInterval 20
 #define samplingInterval2 1000
-#define printInterval 800
+#define printInterval 1000
 #define ArrayLenth 40  // times of collection
-#define ONE_WIRE_BUS 2 // Data wire of DS18B is plugged into port 2 on the Arduino
+#define ONE_WIRE_BUS 3 // Data wire of DS18B is plugged into port 2 on the Arduino
+#define LED 13
 
 int analogBuffer[SCOUNT]; // store the analog value in the array, read from ADC
 int analogBufferTemp[SCOUNT];
 int analogBufferIndex = 0, copyIndex = 0;
 int pHArray[ArrayLenth]; // Store the average value of the sensor feedback
 int pHArrayIndex = 0;
-float averageVoltage = 0, tdsValue = 0, temperature = 0;
+float averageVoltage = 0, tdsValue = 0, temperature = 0, pHValue, voltage;
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);      // lcd addresses and spec
 OneWire oneWire(ONE_WIRE_BUS);           // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
@@ -34,10 +35,32 @@ GravityTDS tdsSensor;
 
 void sendDataToSerial1()
 {
-  DynamicJsonDocument doc(1024);
+  JsonDocument doc;
   doc["tds"] = tdsValue;
   doc["temp"] = temperature;
-  serializeJson(doc, Serial1);
+  doc["ph"] = pHValue;
+  serializeJson(doc, Serial3);
+  // turn on led as indicator
+  digitalWrite(LED, digitalRead(LED) ^ 1);
+}
+
+void nadaStartup()
+{
+  tone(pinBuzzer, 500, 300);
+  delay(300);
+  tone(pinBuzzer, 1500, 350);
+  delay(350);
+  tone(pinBuzzer, 650, 200);
+  delay(300);
+  noTone(pinBuzzer);
+}
+
+void displayStartup()
+{
+  lcd.setCursor(7, 1);
+  lcd.print("Water QM");
+  lcd.setCursor(6, 2);
+  lcd.print("Ari Selan");
 }
 
 double avergearray(int *arr, int number)
@@ -48,7 +71,7 @@ double avergearray(int *arr, int number)
   long amount = 0;
   if (number <= 0)
   {
-    Serial.println("Error number for the array to avraging!/n");
+    // Serial.println("Error number for the array to avraging!/n");
     return 0;
   }
   if (number < 5)
@@ -99,25 +122,30 @@ double avergearray(int *arr, int number)
 
 void setup(void)
 {
-  Serial1.begin(115200, SERIAL_8N1);
+  Serial.begin(9600);
+  Serial3.begin(9600);
   pinMode(LED, OUTPUT);
   pinMode(TdsSensorPin, INPUT);
-  lcd.init();
-  lcd.backlight();
-  Serial.begin(9600);
+  pinMode(pinBuzzer, OUTPUT);
   tempSensors.begin();
   tdsSensor.setPin(TdsSensorPin);
   tdsSensor.setAref(VREF);
   tdsSensor.setAdcRange(ADCRange);
   tdsSensor.begin();
-  Serial.println("pH meter experiment!"); // Test the serial monitor
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  displayStartup();
+  nadaStartup();
+  delay(2000);
+  lcd.clear();
+  // Serial.println("pH meter experiment!"); // Test the serial monitor
 }
 void loop(void)
 {
   static unsigned long samplingTime = millis();
   static unsigned long samplingTime2 = millis();
   static unsigned long printTime = millis();
-  static float pHValue, voltage;
   if (millis() - samplingTime > samplingInterval)
   {
     pHArray[pHArrayIndex++] = analogRead(PHSensorPin);
@@ -147,8 +175,8 @@ void loop(void)
     lcd.clear();
 
     // display voltage PH to serial
-    Serial.print("Voltage PH:");
-    Serial.print(voltage, 2);
+    // Serial.print("Voltage PH:");
+    // Serial.print(voltage, 2);
 
     // display voltage PH to lcd on row 1
     lcd.setCursor(0, 0);
@@ -157,8 +185,8 @@ void loop(void)
     lcd.print(voltage);
 
     // display PH to serial
-    Serial.print("    pH value: ");
-    Serial.println(pHValue, 2);
+    // Serial.print("    pH value: ");
+    // Serial.println(pHValue, 2);
 
     // display PH to lcd on row 1
     lcd.setCursor(8, 0);
@@ -167,9 +195,9 @@ void loop(void)
     lcd.print(pHValue);
 
     // display voltage TDS to serial
-    Serial.print("Voltage TDS:");
-    Serial.print(averageVoltage, 2);
-    Serial.print("V   ");
+    // Serial.print("Voltage TDS:");
+    // Serial.print(averageVoltage, 2);
+    // Serial.print("V   ");
 
     // display temperature to lcd on row 2
     lcd.setCursor(0, 1);
@@ -178,18 +206,15 @@ void loop(void)
     lcd.print(temperature, 1);
 
     // display TDS value to serial
-    Serial.print("    TDS Value:");
-    Serial.print(tdsValue, 0);
-    Serial.println("ppm");
+    // Serial.print("    TDS Value:");
+    // Serial.print(tdsValue, 0);
+    // Serial.println("ppm");
 
     // display TDS value to lcd on row 2
     lcd.setCursor(8, 1);
     lcd.print("TD:");
     lcd.setCursor(12, 1);
     lcd.print(tdsValue, 0);
-
-    // turn on led as indicator
-    digitalWrite(LED, digitalRead(LED) ^ 1);
 
     // reset millis
     printTime = millis();

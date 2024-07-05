@@ -13,7 +13,7 @@
 #define VREF 5.0        // voltage reference of ADC
 #define ADCRange 1024   // ADC Range of microcontroller
 #define SCOUNT 30       // sum of sample point
-#define Offset 0.00     // deviation compensate
+#define Offset 0.27     // deviation compensate
 #define samplingInterval 20
 #define samplingInterval2 1000
 #define printInterval 1000
@@ -41,7 +41,7 @@ void sendDataToSerial1()
   doc["ph"] = pHValue;
   serializeJson(doc, Serial3);
   // turn on led as indicator
-  digitalWrite(LED, digitalRead(LED) ^ 1);
+  // digitalWrite(LED, digitalRead(LED) ^ 1);
 }
 
 void nadaStartup()
